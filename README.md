@@ -56,10 +56,3 @@
 * Keep your team number updated using the Options page.
 * For consistent filenames, ensure only **one Drive tab is open** at a time.
 
----
-
-Let me know if you'd also like the `description` line for GitHub (shorter tagline like:
-
-> *A one-click PDF saver for RLHF task workflows, using team-configurable filenames.*
-
-)
