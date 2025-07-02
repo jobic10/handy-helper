@@ -1,49 +1,59 @@
 chrome.action.onClicked.addListener(async (tab) => {
-  const allTabs = await chrome.tabs.query({});
-  const driveTab = allTabs.find(t => t.title.includes("Google Drive"));
-  const driveTitle = driveTab ? driveTab.title.split(" - ")[0] : "UnknownDrive";
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const driveTab = allTabs.find(t => t.url.includes("drive.google.com"));
 
-  chrome.storage.local.get(["teamNumber", "printMode"], async (data) => {
-    const team = data.teamNumber || "Team#2";
-    const mode = data.printMode || "full";
+    let driveTitle = "UnknownDrive";
+    if (driveTab) {
+      driveTitle = driveTab.title.split(" - ")[0].replace(/[\\/:*?"<>|]/g, "").trim();
+    }
+
+    const urlParts = tab.url.split("/");
+    const taskId = urlParts[urlParts.length - 1];
+
+    const { teamNumber, printMode } = await new Promise((resolve) =>
+      chrome.storage.local.get(["teamNumber", "printMode"], resolve)
+    );
+
+    const team = teamNumber || "Team#2";
+    const mode = printMode || "full";
     const filename = `${team}_${driveTitle}.pdf`;
 
-    try {
+    // 1. Copy Task ID to clipboard
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (text) => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        console.log("Copied to clipboard:", text);
+      },
+      args: [taskId]
+    });
 
-      const urlParts = tab.url.split("/");
-      const taskId = urlParts[urlParts.length - 1];
+    // 2. Inject html2pdf
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["html2pdf.bundle.min.js"]
+    });
 
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (text) => {
-          const textarea = document.createElement('textarea');
-          textarea.value = text;
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textarea);
-          console.log("Copied to clipboard:", text);
-        },
-        args: [taskId]
-      });
+    // 3. Generate PDF
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (filename, mode) => {
+        (async () => {
+          window.scrollTo(0, 0);
+          await new Promise(r => setTimeout(r, 2));
 
-
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["html2pdf.bundle.min.js"]
-      });
-
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (filename, mode) => {
           const scrollTop = window.scrollY;
           const viewportHeight = window.innerHeight;
           const body = document.body;
-
           let target;
 
           if (mode === "visible") {
-            // Create a div representing just the visible area
             const viewDiv = document.createElement("div");
             viewDiv.style.position = "absolute";
             viewDiv.style.top = scrollTop + "px";
@@ -54,11 +64,9 @@ chrome.action.onClicked.addListener(async (tab) => {
             viewDiv.style.zIndex = "9999999";
             viewDiv.style.background = "white";
 
-            // Clone the body into it
             const clone = body.cloneNode(true);
             clone.style.marginTop = `-${scrollTop}px`;
             viewDiv.appendChild(clone);
-
             document.body.appendChild(viewDiv);
             target = viewDiv;
           } else {
@@ -71,15 +79,16 @@ chrome.action.onClicked.addListener(async (tab) => {
             .save()
             .then(() => {
               if (mode === "visible" && target && target.remove) {
-                target.remove(); // clean up overlay
+                target.remove(); // Clean up
               }
             });
-        },
-        args: [filename, mode]
-      });
-    } catch (err) {
-      console.error("PDF generation error:", err);
-      alert("Error: " + err.message);
-    }
-  });
+        })();
+      },
+      args: [filename, mode]
+    });
+
+  } catch (err) {
+    console.error("PDF generation error:", err);
+    alert("Error: " + err.message);
+  }
 });
