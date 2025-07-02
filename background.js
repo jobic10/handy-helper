@@ -9,6 +9,25 @@ chrome.action.onClicked.addListener(async (tab) => {
     const filename = `${team}_${driveTitle}.pdf`;
 
     try {
+
+      const urlParts = tab.url.split("/");
+      const taskId = urlParts[urlParts.length - 1];
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (text) => {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          console.log("Copied to clipboard:", text);
+        },
+        args: [taskId]
+      });
+
+
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ["html2pdf.bundle.min.js"]
